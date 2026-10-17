@@ -3,8 +3,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from src.api.schemas.base import StandardResponse
+from src.config.settings import settings
 
-API_VERSION = "v1"
+API_VERSION = settings.api_version
 
 
 class HealthStatus(BaseModel):
