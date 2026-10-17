@@ -4,10 +4,12 @@ from datetime import UTC, datetime
 from fastapi import APIRouter
 
 from src.api.schemas.health import API_VERSION, HealthResponse, HealthStatus
+from src.config.settings import settings
 
 router = APIRouter(
-    prefix="/api/v1",
-    tags=["health"])
+    prefix=settings.api_prefix,
+    tags=["health"],
+)
 
 _START_TIME = time.monotonic()
 
