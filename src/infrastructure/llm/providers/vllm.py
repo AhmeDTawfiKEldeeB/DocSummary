@@ -21,23 +21,37 @@ class VLLMProvider(BaseLLM):
         self.base_url = base_url or settings.vllm_base_url or ""
         self.model_name = model_name or settings.vllm_model_name
         self.api_key = api_key or settings.vllm_api_key or "EMPTY"
-        self.client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+
+    def _get_client(self) -> AsyncOpenAI:
+        return AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+
+    @property
+    def client(self) -> AsyncOpenAI:
+        return self._get_client()
 
     async def generate(self, messages: List[Dict[str, str]], **kwargs: Any) -> str:
         """Executes a full non-streaming generation request."""
-        res = await self.client.chat.completions.create(
-            model=self.model_name, messages=messages, **kwargs
-        )
-        return res.choices[0].message.content or ""
+        client = self._get_client()
+        try:
+            res = await client.chat.completions.create(
+                model=self.model_name, messages=messages, **kwargs
+            )
+            return res.choices[0].message.content or ""
+        finally:
+            await client.close()
 
     async def stream(
         self, messages: List[Dict[str, str]], **kwargs: Any
     ) -> AsyncGenerator[str, None]:
         """Executes a streaming generation request yielding token chunks."""
-        response_stream = await self.client.chat.completions.create(
-            model=self.model_name, messages=messages, stream=True, **kwargs
-        )
-        async for chunk in response_stream:
-            content = chunk.choices[0].delta.content
-            if content:
-                yield content
+        client = self._get_client()
+        try:
+            response_stream = await client.chat.completions.create(
+                model=self.model_name, messages=messages, stream=True, **kwargs
+            )
+            async for chunk in response_stream:
+                content = chunk.choices[0].delta.content
+                if content:
+                    yield content
+        finally:
+            await client.close()
