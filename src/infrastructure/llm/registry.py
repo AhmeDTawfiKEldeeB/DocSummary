@@ -4,16 +4,16 @@ try:
     from src.config.settings import Settings, get_settings
     from src.infrastructure.llm.interfaces import BaseLLM
     from src.infrastructure.llm.providers import (
+        GeminiProvider,
         GroqProvider,
-        OpenAIProvider,
         VLLMProvider,
     )
 except ModuleNotFoundError:
     from config.settings import Settings, get_settings
     from infrastructure.llm.interfaces import BaseLLM
     from infrastructure.llm.providers import (
+        GeminiProvider,
         GroqProvider,
-        OpenAIProvider,
         VLLMProvider,
     )
 
@@ -51,17 +51,20 @@ def initialize_providers(cfg: Optional[Settings] = None) -> None:
                 base_url=config.vllm_base_url,
                 model_name=config.vllm_model_name,
                 api_key=config.vllm_api_key,
+                max_tokens=config.vllm_max_tokens,
             ),
         )
 
-    # 2. Register OpenAI (Generation)
-    if config.openai_api_key:
+    # 2. Register Gemini (Generation)
+    if config.gemini_api_key:
         registry.register_llm(
-            "openai",
-            OpenAIProvider(
-                api_key=config.openai_api_key,
-                model_name=config.openai_model_name,
-                base_url=config.openai_base_url,
+            "gemini",
+            GeminiProvider(
+                api_key=config.gemini_api_key,
+                model_name=config.gemini_model_name,
+                base_url=config.gemini_base_url,
+                max_tokens=config.gemini_max_tokens,
+                thinking_budget=config.gemini_thinking_budget,
             ),
         )
 
@@ -73,6 +76,8 @@ def initialize_providers(cfg: Optional[Settings] = None) -> None:
                 api_key=config.groq_api_key,
                 model_name=config.groq_model_name,
                 base_url=config.groq_base_url,
+                max_tokens=config.groq_max_tokens,
+                reasoning_effort=config.groq_reasoning_effort,
             ),
         )
 
