@@ -31,7 +31,12 @@ class GroqProvider(BaseLLM):
         )
 
     def _get_client(self) -> AsyncOpenAI:
-        return AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        return AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            max_retries=8,
+            timeout=120.0,
+        )
 
     @property
     def client(self) -> AsyncOpenAI:

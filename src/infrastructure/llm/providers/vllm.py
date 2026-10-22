@@ -50,39 +50,14 @@ class VLLMProvider(BaseLLM):
         return params
 
     async def generate(self, messages: List[Dict[str, str]], **kwargs: Any) -> str:
-        """Executes a full generation request with automatic continuation if max_tokens is reached."""
-        client = self._get_client()
-        params = self._build_params(kwargs)
-        try:
-            full_text = ""
-            current_messages = list(messages)
-            max_continuations = 3
-
-            for attempt in range(max_continuations):
-                res = await client.chat.completions.create(
-                    model=self.model_name, messages=current_messages, **params
-                )
-                choice = res.choices[0]
-                chunk_text = choice.message.content or ""
-                full_text = f"{full_text} {chunk_text}".strip() if full_text else chunk_text
-
-                if choice.finish_reason != "length":
-                    break
-
-                logger.info(
-                    "Generation hit max_tokens limit (%s); automatically continuing (attempt %d)...",
-                    params.get("max_tokens"),
-                    attempt + 1,
-                )
-                current_messages.append({"role": "assistant", "content": chunk_text})
-                current_messages.append({
-                    "role": "user",
-                    "content": "Please continue writing the remaining content and provide the complete final conclusion.",
-                })
-
-            return full_text
-        finally:
-            await client.close()
+        """
+        Executes a full generation request by streaming tokens over the wire.
+        This keeps the HTTP connection continuously active, preventing ngrok/proxy 503/524 timeouts.
+        """
+        full_text: List[str] = []
+        async for token in self.stream(messages, **kwargs):
+            full_text.append(token)
+        return "".join(full_text).strip()
 
     async def stream(
         self, messages: List[Dict[str, str]], **kwargs: Any
@@ -90,9 +65,17 @@ class VLLMProvider(BaseLLM):
         """Executes a streaming generation request with automatic continuation if max_tokens is reached."""
         client = self._get_client()
         params = self._build_params(kwargs)
+        max_tokens_budget = params.get("max_tokens")
+        logger.debug(
+            "vLLM stream starting: model=%s, max_tokens=%s, temperature=%s",
+            self.model_name,
+            max_tokens_budget,
+            params.get("temperature"),
+        )
         try:
             current_messages = list(messages)
             max_continuations = 3
+            finish_reason = None
 
             for attempt in range(max_continuations):
                 response_stream = await client.chat.completions.create(
@@ -105,23 +88,34 @@ class VLLMProvider(BaseLLM):
                     if not chunk.choices:
                         continue
                     choice = chunk.choices[0]
-                    finish_reason = choice.finish_reason
-                    if choice.delta.content:
-                        accumulated += choice.delta.content
-                        yield choice.delta.content
+                    if choice.finish_reason:
+                        finish_reason = choice.finish_reason
+                    content = getattr(choice.delta, "content", None)
+                    if content:
+                        accumulated += content
+                        yield content
 
                 if finish_reason != "length":
                     break
 
-                logger.info(
-                    "Stream hit max_tokens limit (%s); automatically continuing stream (attempt %d)...",
-                    params.get("max_tokens"),
-                    attempt + 1,
-                )
-                current_messages.append({"role": "assistant", "content": accumulated})
-                current_messages.append({
-                    "role": "user",
-                    "content": "Please continue writing the remaining content and provide the complete final conclusion.",
-                })
+                if attempt < max_continuations - 1:
+                    logger.warning(
+                        "Stream hit max_tokens limit (%s); automatically continuing stream (attempt %d/%d)...",
+                        max_tokens_budget,
+                        attempt + 1,
+                        max_continuations,
+                    )
+                    current_messages.append({"role": "assistant", "content": accumulated})
+                    current_messages.append({
+                        "role": "user",
+                        "content": "Please continue writing the remaining content and provide the complete final conclusion.",
+                    })
+                else:
+                    logger.warning(
+                        "Stream reached max continuations (%d) and output remains truncated at max_tokens=%s. Appending truncation notice.",
+                        max_continuations,
+                        max_tokens_budget,
+                    )
+                    yield TRUNCATION_NOTE
         finally:
             await client.close()
