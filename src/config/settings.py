@@ -32,7 +32,10 @@ class Settings(BaseSettings):
 
     # Gateway Default Provider Selection
     default_llm_provider: str = Field(
-        default="vllm", description="Default generation provider name (e.g., vllm, openai, groq)"
+        default="groq", description="Default generation provider name (e.g., vllm, gemini, groq)"
+    )
+    default_max_tokens: int = Field(
+        default=4096, description="Global default maximum generation tokens for LLMs"
     )
 
     # vLLM Generation Provider
@@ -46,16 +49,31 @@ class Settings(BaseSettings):
         default="bernhardbrieger/Qwen3.8-27B-GPTQ-Int4",
         description="Model name/identifier for vLLM",
     )
+    vllm_max_tokens: int = Field(
+        default=8192,
+        description="Maximum output generation tokens for vLLM",
+    )
+    vllm_context_window: int = Field(
+        default=32768,
+        description="Maximum context window size for vLLM input",
+    )
 
-    # OpenAI Generation Provider
-    openai_api_key: Optional[str] = Field(
-        default=None, description="API Key for OpenAI cloud services"
+    # Gemini Generation Provider
+    gemini_api_key: Optional[str] = Field(
+        default=None, description="API Key for Google Gemini cloud services"
     )
-    openai_base_url: Optional[str] = Field(
-        default=None, description="Custom base URL for OpenAI endpoint (optional)"
+    gemini_base_url: Optional[str] = Field(
+        default=None, description="Custom base URL for Gemini endpoint (optional)"
     )
-    openai_model_name: str = Field(
-        default="gpt-4o-mini", description="Default OpenAI model name"
+    gemini_model_name: str = Field(
+        default="gemini-2.5-flash", description="Default Gemini model name"
+    )
+    gemini_max_tokens: int = Field(
+        default=8192, description="Maximum output tokens for Gemini generation"
+    )
+    gemini_thinking_budget: Optional[int] = Field(
+        default=0,
+        description="Thinking budget in tokens for Gemini models (0 = disabled, -1 = auto, >0 = token budget)",
     )
 
     # Groq Generation Provider
@@ -67,7 +85,14 @@ class Settings(BaseSettings):
         description="Base URL for Groq API endpoint",
     )
     groq_model_name: str = Field(
-        default="llama-3.3-70b-versatile", description="Default Groq generation model name"
+        default="qwen/qwen3.8-27b", description="Default Groq generation model name"
+    )
+    groq_max_tokens: int = Field(
+        default=800, description="Maximum output tokens for Groq models to avoid OTPM rate limits"
+    )
+    groq_reasoning_effort: Optional[str] = Field(
+        default="none",
+        description="Reasoning effort for Groq reasoning models: 'none' to disable thinking, 'low', 'medium', 'high', or None to omit",
     )
 
     # Vector Database Settings
@@ -80,6 +105,98 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = Field(
         default="documents", description="Default collection name in Qdrant"
     )
+
+    # Database Settings (PostgreSQL / Async)
+    database_url: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/postgres",
+        description="Async database connection URL",
+    )
+    database_echo: bool = Field(
+        default=False, description="Enable SQLAlchemy engine query logging"
+    )
+
+    # Redis Cache & Message Broker
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection URL",
+    )
+
+    # Document File Storage
+    storage_dir: Path = Field(
+        default=BASE_DIR / "uploads",
+        description="Local directory for uploaded PDF documents",
+    )
+    max_file_size_bytes: int = Field(
+        default=50 * 1024 * 1024,
+        description="Maximum allowed PDF file size in bytes (default 50MB)",
+    )
+
+    # Celery & Worker Execution Settings
+    celery_task_time_limit: int = Field(
+        default=3600,
+        description="Hard time limit for Celery tasks in seconds (default 1h)",
+    )
+    celery_task_soft_time_limit: int = Field(
+        default=3300,
+        description="Soft time limit for Celery tasks in seconds (default 55m)",
+    )
+    celery_task_max_retries: int = Field(
+        default=3,
+        description="Maximum retry attempts for transient worker errors",
+    )
+        # Long Document Summarization
+    long_summary_tokenizer_name: str = Field(
+        default="bernhardbrieger/Qwen3.8-27B-GPTQ-Int4",
+        description="Tokenizer repository or local path used for long-document token counting",
+    )
+    max_tokens_per_chunk: int = Field(
+        default=2200,
+        ge=500,
+        description="Target maximum number of tokens per chunk for long documents",
+    )
+    max_pages_per_chunk: int = Field(
+        default=5,
+        ge=1,
+        description="Hard maximum number of pages per chunk for long documents",
+    )
+    long_summary_chunk_tokens: int = Field(
+        default=2200,
+        ge=500,
+        description="Target maximum number of tokens per source chunk (alias for max_tokens_per_chunk)",
+    )
+    long_summary_reduce_input_tokens: int = Field(
+        default=5000,
+        ge=1000,
+        description="Maximum target input tokens per reduction group",
+    )
+    long_summary_skip_reduction_threshold: int = Field(
+        default=5000,
+        ge=1000,
+        description="Skip reduction stage if combined chunk summaries are below this token threshold",
+    )
+    long_summary_chunk_output_tokens: int = Field(
+        default=600,
+        ge=128,
+        description="Maximum generated tokens for each chunk summary",
+    )
+    long_summary_reduce_output_tokens: int = Field(
+        default=600,
+        ge=128,
+        description="Maximum generated tokens for each reduction summary",
+    )
+    long_summary_final_output_tokens: int = Field(
+        default=2000,
+        ge=128,
+        description="Maximum generated tokens for the final summary",
+    )
+    long_summary_max_concurrency: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        description="Maximum concurrent LLM requests during long-document summarization",
+    )
+
+    
 
     @model_validator(mode="before")
     @classmethod
